@@ -1,0 +1,74 @@
+#include <TinyGPS++.h>
+#include <SoftwareSerial.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+
+const char* ssid = "PLDTHOMEFIBR18660";
+const char* password = "PLDTWIFI0vQtt";
+
+// Server URL
+const String serverName = "http://192.168.1.4/komyuter_admin/app_api/insert_gps_data.php";
+
+// GPS setup
+#define RXPin D5
+#define TXPin D6
+#define GPSBaud 9600
+
+TinyGPSPlus gps;
+SoftwareSerial ss(RXPin, TXPin);
+
+String gpsId = "GPS001"; // Modify this to be unique for each device
+
+void setup() {
+  Serial.begin(9600);
+  ss.begin(GPSBaud);
+
+  // Connect to Wi-Fi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+  Serial.println("IP Address: " + WiFi.localIP().toString());
+}
+
+void loop() {
+  // Check for GPS data
+  while (ss.available() > 0) {
+    gps.encode(ss.read());
+    if (gps.location.isUpdated()) {
+      float latitude = gps.location.lat();
+      float longitude = gps.location.lng();
+      float speed_kph = gps.speed.kmph();  // Get speed in km/h
+
+      if (WiFi.status() == WL_CONNECTED) {
+        HTTPClient http;
+        WiFiClient client; // Create a WiFiClient object
+        http.begin(client, serverName); // Use the client object here
+
+        // Send HTTP POST request
+        http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+        String httpRequestData = "gps_id=" + gpsId + // Pass GPS ID
+                                 "&latitude=" + String(latitude, 6) +
+                                 "&longitude=" + String(longitude, 6) +
+                                 "&speed=" + String(speed_kph, 2);  // Add speed to the data
+        int httpResponseCode = http.POST(httpRequestData);
+        Serial.println("HTTP Response Code: " + String(httpResponseCode));
+
+        // Check the HTTP response
+        if (httpResponseCode > 0) {
+          String response = http.getString();
+          Serial.println("HTTP Response: " + response);
+        } else {
+          Serial.println("Error in HTTP request");
+        }
+        http.end();
+      } else {
+        Serial.println("WiFi disconnected");
+      }
+
+      delay(4000); // Adjust as needed
+    }
+  }
+}
